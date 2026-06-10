@@ -10,6 +10,8 @@ setup(
         "click>=8.1.0",
         "psutil>=5.9.0",
         "prometheus-client>=0.17.0",
+        "flask>=2.0.0"
+        "python-dotenv>=0.19.0"
     ],
     entry_points={
         "console_scripts": [
