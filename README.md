@@ -33,5 +33,4 @@ python3 -m venv venv
 source venv/bin/activate
 
 # Установка зависимостей
-pip install pyyaml docker click psutil prometheus-client python-dotenv flask
 pip install -e .
