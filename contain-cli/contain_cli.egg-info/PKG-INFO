@@ -1,0 +1,9 @@
+Metadata-Version: 2.4
+Name: contain-cli
+Version: 0.1.0
+Requires-Dist: docker>=6.1.0
+Requires-Dist: pyyaml>=6.0
+Requires-Dist: click>=8.1.0
+Requires-Dist: psutil>=5.9.0
+Requires-Dist: prometheus-client>=0.17.0
+Dynamic: requires-dist

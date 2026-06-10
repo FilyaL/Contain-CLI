@@ -1,0 +1,257 @@
+"""Core orchestration logic"""
+
+import docker
+import time
+import requests
+import threading
+from typing import Dict, List, Any
+import click
+import logging
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+
+logging.basicConfig(
+    filename='/var/log/contain.log',
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger('contain')
+
+class Orchestrator:
+    def __init__(self, config: Dict[str, Any]):
+        self.config = config
+        self.client = docker.from_env()
+        self.containers: Dict[str, Any] = {}
+        self.monitored_containers: Dict[str, Any] = {}
+        self.service_name = config.get("name", "app")
+        self.network_name = f"{self.service_name}_network"
+        self.monitoring_thread = None
+        self.running = False
+        
+    def _ensure_network(self):
+        """Create network if it doesn't exist"""
+        try:
+            network = self.client.networks.get(self.network_name)
+        except docker.errors.NotFound:
+            network = self.client.networks.create(
+                self.network_name,
+                driver="bridge",
+                check_duplicate=True
+            )
+            click.echo(f" Created network: {self.network_name}")
+        return network
+    
+    def _start_monitoring(self):
+        """Start background thread for monitoring containers"""
+        def monitor():
+            while self.running:
+                for name, container in list(self.monitored_containers.items()):
+                    try:
+                        container.reload()
+                        if container.status != 'running':
+                            click.echo(f"  Restarting {name} (status: {container.status})")
+                            container.start()
+                            click.echo(f"  {name} restarted successfully")
+                    except Exception as e:
+                        click.echo(f"  Monitor error for {name}: {e}")
+                time.sleep(5)
+
+        logger.warning(f"Restarting {name}, status was {container.status}")
+        self.running = True
+        self.monitoring_thread = threading.Thread(target=monitor, daemon=True)
+        self.monitoring_thread.start()
+        click.echo("  Monitoring started (auto-restart enabled for 'always' services)")        
+        self.running = True
+        self.monitoring_thread = threading.Thread(target=monitor, daemon=True)
+        self.monitoring_thread.start()
+        click.echo(" Monitoring started (auto-restart enabled for 'always' services)")
+    
+    def start_all(self):
+        """Start all services with dependency resolution"""
+        services = self.config.get("services", {})
+        
+        # Create network
+        self._ensure_network()
+        
+        # Resolve dependencies
+        order = self._resolve_order(services)
+        
+        for service_name in order:
+            self._start_service(service_name, services[service_name])
+        
+        # Start monitoring
+        self._start_monitoring()
+        
+        click.echo("\n Running health checks...")
+        for service_name in services:
+            self._health_check(service_name)
+        
+        click.echo("\n All services started!")
+    
+    def _resolve_order(self, services: Dict) -> List[str]:
+        visited = set()
+        order = []
+        
+        def dfs(name):
+            if name in visited:
+                return
+            visited.add(name)
+            deps = services.get(name, {}).get("depends_on", [])
+            for dep in deps:
+                if dep in services:
+                    dfs(dep)
+            order.append(name)
+        
+        for name in services:
+            dfs(name)
+        
+        return order
+    
+    def _start_service(self, name: str, spec: Dict):
+        click.echo(f" Starting {name}...")
+	logger.info(f"Started {name} with image {image}")
+        image = spec.get("image")
+        build = spec.get("build")
+        
+	env = {}
+	for key, value in spec.get("environment", {}).items():
+	    if isinstance(value, str) and value.startswith('${') and value.endswith('}'):
+	        var_name = value[2:-1]
+	        env[key] = os.getenv(var_name, '')
+	    else:
+	        env[key] = value
+	        if build:
+	            click.echo(f"     Building {name} from {build}...")
+	BA            try:
+                self.client.images.build(path=build, tag=f"{self.service_name}-{name}")
+                image = f"{self.service_name}-{name}"
+            except Exception as e:
+                click.echo(f" Build failed: {e}")
+                return
+        
+        # Port mapping
+        ports = {}
+        for p in spec.get("ports", []):
+            if ":" in p:
+                host, container = p.split(":")
+                ports[container] = host
+        
+        env = spec.get("environment", {})
+        
+        # Remove existing container with same name
+        container_name = f"{self.service_name}-{name}"
+        try:
+            old_container = self.client.containers.get(container_name)
+            old_container.remove(force=True)
+        except docker.errors.NotFound:
+            pass
+        
+        # Run container with network
+        try:
+            container = self.client.containers.run(
+                image,
+                detach=True,
+                name=container_name,
+                ports=ports,
+                environment=env,
+                network=self.network_name,
+                remove=False  # Don't auto-remove to allow restart
+            )
+            self.containers[name] = container
+            
+            # Check if restart policy is enabled
+            restart_policy = spec.get("restart", "no")
+            if restart_policy == "always":
+                self.monitored_containers[name] = container
+                click.echo(f"{name} started (auto-restart ENABLED, ID: {container.short_id})")
+            else:
+                click.echo(f"{name} started (ID: {container.short_id})")
+                
+        except Exception as e:
+            click.echo(f" Failed: {e}")
+    
+    def _health_check(self, name: str):
+        if name not in self.containers:
+            return
+        logger.info(f"Health check passed for {name}")
+        container = self.containers[name]
+        spec = self.config.get("services", {}).get(name, {})
+        hc = spec.get("healthcheck", {})
+        
+        if not hc:
+            click.echo(f" {name}: no healthcheck defined")
+            return
+        
+        timeout = hc.get("timeout", 30)
+        interval = hc.get("interval", 5)
+        
+        for attempt in range(timeout // interval):
+            time.sleep(interval)
+            
+            if "http" in hc:
+                # For HTTP healthcheck, use container network
+                try:
+                    resp = requests.get(f"http://{name}{hc['http']}", timeout=3)
+                    if resp.status_code == 200:
+                        click.echo(f" {name}: healthy")
+                        return
+                except:
+                    pass
+            
+            elif "command" in hc:
+                try:
+                    result = container.exec_run(hc["command"])
+                    if result.exit_code == 0:
+                        click.echo(f" {name}: healthy")
+                        return
+                except:
+                    pass
+        
+        click.echo(f"  {name}: healthcheck failed after {timeout}s")
+    
+    def stop_all(self):
+        """Stop all containers"""
+        self.running = False
+        if self.monitoring_thread:
+            self.monitoring_thread.join(timeout=2)
+        
+        for name, container in self.containers.items():
+            try:
+                container.stop()
+                container.remove()
+                click.echo(f" Stopped and removed {name}")
+            except Exception as e:
+                click.echo(f" Failed to stop {name}: {e}")
+        
+        self.containers.clear()
+        self.monitored_containers.clear()
+        
+        # Remove network
+        try:
+            network = self.client.networks.get(self.network_name)
+            network.remove()
+            click.echo(f" Removed network: {self.network_name}")
+        except:
+            pass
+    
+    def status(self):
+        click.echo(f"\n Status for {self.service_name}:")
+        click.echo("-" * 60)
+        
+        try:
+            all_containers = self.client.containers.list(all=True, filters={"name": self.service_name})
+            for container in all_containers:
+                name = container.name.replace(f"{self.service_name}-", "")
+                status = container.status
+                icon = "✅" if status == "running" else "❌"
+                
+                # Check restart policy
+                restart_info = ""
+                if name in self.monitored_containers:
+                    restart_info = " [auto-restart: ON]"
+                
+                click.echo(f"{icon} {name}: {status}{restart_info}")
+        except Exception as e:
+            click.echo(f"Error: {e}")

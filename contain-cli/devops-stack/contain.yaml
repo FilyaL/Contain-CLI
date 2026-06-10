@@ -1,0 +1,126 @@
+name: devops-stack
+version: "2.0"
+services:
+  postgres:
+    image: postgres:15-alpine
+    restart: always
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_PASSWORD=postgres
+    healthcheck:
+      command: ["pg_isready", "-U", "postgres"]
+      interval: 5
+      timeout: 30
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    ports:
+      - "6379:6379"
+    healthcheck:
+      command: ["redis-cli", "ping"]
+      interval: 5
+      timeout: 30
+
+  nginx:
+    build: ./nginx
+    restart: always
+    ports:
+      - "8080:80"
+    healthcheck:
+      http: "/"
+      interval: 5
+      timeout: 30
+
+  api:
+    build: ./api
+    restart: always
+    ports:
+      - "5000:5000"
+    environment:
+      DB_HOST: "172.18.0.2"
+      REDIS_HOST: "172.18.0.3"
+      DB_USER: "postgres"
+      DB_PASSWORD: "postgres"
+      DB_NAME: "postgres"
+    depends_on:
+      - postgres
+      - redis
+    healthcheck:
+      http: "/health"
+      interval: 5
+      timeout: 30
+
+  prometheus:
+    image: prom/prometheus:latest
+    restart: always
+    ports:
+      - "9092:9090"
+    healthcheck:
+      http: "/-/healthy"
+      interval: 10
+      timeout: 30
+
+  grafana:
+    image: grafana/grafana:latest
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    healthcheck:
+      http: "/api/health"
+      interval: 10
+      timeout: 30
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    restart: always
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      - RABBITMQ_DEFAULT_USER=admin
+      - RABBITMQ_DEFAULT_PASS=admin123
+    healthcheck:
+      command: ["rabbitmq-diagnostics", "check_port_connectivity"]
+      interval: 10
+      timeout: 30
+
+  loki:
+    image: grafana/loki:latest
+    restart: always
+    ports:
+      - "3100:3100"
+    healthcheck:
+      http: "/ready"
+      interval: 10
+      timeout: 30
+
+  promtail:
+    image: grafana/promtail:latest
+    restart: always
+    volumes:
+      - /var/log:/var/log
+      - /var/lib/docker/containers:/var/lib/docker/containers
+    healthcheck:
+      command: ["pgrep", "promtail"]
+      interval: 10
+      timeout: 30
+
+  traefik:
+    image: traefik:v3.0
+    restart: always
+    ports:
+      - "8081:8080"
+      - "8001:8000"
+    command:
+      - --api.dashboard=true
+      - --providers.docker=true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    healthcheck:
+      command: ["pgrep", "traefik"]
+      interval: 10
+      timeout: 30

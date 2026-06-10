@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>DevOps Stack - Contain Orchestrator</title>
+    <style>
+        body {
+            font-family: 'Courier New', monospace;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #fff;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #00d4ff;
+            text-shadow: 0 0 10px #00d4ff;
+        }
+        .card {
+            background: rgba(255,255,255,0.1);
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            border-left: 4px solid #00d4ff;
+        }
+        .service-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .service-card {
+            background: rgba(0,0,0,0.5);
+            border-radius: 8px;
+            padding: 15px;
+            text-align: center;
+        }
+        .service-card a {
+            color: #00d4ff;
+            text-decoration: none;
+        }
+        .status {
+            color: #00ff88;
+        }
+        pre {
+            background: #0d1117;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: auto;
+        }
+        .api-endpoint {
+            background: #0d1117;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            font-family: monospace;
+        }
+        button {
+            background: #00d4ff;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1> Contain Orchestrator</h1>
+        <p>Production-grade container orchestration platform</p>
+
+        <div class="card">
+            <h2> System Status </h2>
+            <p>All services are <span class="status"> RUNNING </span></p>
+            <p>Total containers managed: <span id="containerCount">...</span></p>
+        </div>
+
+        <div class="service-grid">
+            <div class="service-card">
+                <h3>∞òÌ API Gateway</h3>
+                <a href="http://localhost:5000">http://localhost:5000</a>
+            </div>
+            <div class="service-card">
+                <h3>ºêÌ Grafana</h3>
+                <a href="http://localhost:3000">http://localhost:3000</a>
+                <p>admin / admin</p>
+            </div>
+            <div class="service-card">
+                <h3>≥äÌ Prometheus</h3>
+                <a href="http://localhost:9090">http://localhost:9090</a>
+            </div>
+            <div class="service-card">
+                <h3>≥àÌ RabbitMQ</h3>
+                <a href="http://localhost:15672">http://localhost:15672</a>
+                <p>admin / admin123</p>
+            </div>
+            <div class="service-card">
+                <h3>∞∞Ì Redis</h3>
+                <p>localhost:6379</p>
+            </div>
+            <div class="service-card">
+                <h3>≥¶Ì PostgreSQL</h3>
+                <p>localhost:5432</p>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2> API Endpoints </h2>
+            <div class="api-endpoint">
+                <strong>GET /api/users</strong> - List all users
+                <button onclick="fetchAPI('/api/users')">Try</button>
+            </div>
+            <div class="api-endpoint">
+                <strong>GET /api/products</strong> - List products
+                <button onclick="fetchAPI('/api/products')">Try</button>
+            </div>
+            <div class="api-endpoint">
+                <strong>GET /api/cache/test</strong> - Test Redis cache
+                <button onclick="fetchAPI('/api/cache/test')">Try</button>
+            </div>
+            <div class="api-endpoint">
+                <strong>GET /api/metrics</strong> - Service metrics
+                <button onclick="fetchAPI('/api/metrics')">Try</button>
+            </div>
+            <pre id="apiResult">Click a button to test API</pre>
+        </div>
+    </div>
+
+    <script>
+        async function fetchAPI(endpoint) {
+            const response = await fetch(`http://localhost:5000${endpoint}`);
+            const data = await response.json();
+            document.getElementById('apiResult').textContent = JSON.stringify(data, null, 2);
+        }
+
+        async function getContainerCount() {
+            const response = await fetch('http://localhost:9092/metrics');
+            const text = await response.text();
+            const match = text.match(/container_count (\d+)/);
+            if (match) {
+                document.getElementById('containerCount').textContent = match[1];
+            }
+        }
+        getContainerCount();
+        setInterval(getContainerCount, 10000);
+    </script>
+</body>
+</html>
