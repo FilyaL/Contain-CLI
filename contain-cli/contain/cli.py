@@ -239,15 +239,18 @@ def down(file):
         pass
     
     click.echo("All services stopped")
+    
+@cli.command()
+@click.argument('file', default='contain.yaml')
 def ps(file):
     """Show running services status"""
     if not os.path.exists(file):
         click.echo(f"Config file {file} not found")
         return
-    
+
     with open(file) as f:
         config = yaml.safe_load(f)
-    
+
     from .orchestrator import Orchestrator
     orch = Orchestrator(config)
     orch.status()
