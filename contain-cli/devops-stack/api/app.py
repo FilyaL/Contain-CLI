@@ -7,7 +7,6 @@ import random
 
 app = Flask(__name__)
 
-# Используем имена контейнеров из Docker сети
 DB_HOST = os.getenv('DB_HOST', 'postgres')
 REDIS_HOST = os.getenv('REDIS_HOST', 'redis')
 DB_USER = os.getenv('DB_USER', 'postgres')
