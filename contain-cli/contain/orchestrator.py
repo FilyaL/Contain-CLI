@@ -9,7 +9,7 @@ from typing import Dict, List, Any
 import click
 
 logging.basicConfig(
-    filename='/var/log/contain.log',
+    filename=os.path.expanduser('~/contain.log'),
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
