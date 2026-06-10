@@ -185,7 +185,6 @@ def logs(file, tail, service):
         except docker.errors.NotFound:
             click.echo(f"Service {service} not found")
     else:
-        # Показать логи всех сервисов
         services = config.get("services", {})
         for s in services.keys():
             container_name = f"{service_name}-{s}"
