@@ -222,7 +222,6 @@ def exec(file, service, command):
         container = client.containers.get(container_name)
         cmd = ' '.join(command)
         if not cmd:
-            # Если команда не указана, запускаем shell
             cmd = '/bin/sh'
             click.echo(f"Opening shell in {service}...")
         
