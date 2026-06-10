@@ -14,44 +14,149 @@ def cli():
     pass
 
 @cli.command()
-@click.argument("name", default=".")
-@cli.command()
-def init():
-    """Initialize new contain.yaml"""
-    config = """name: my-app
-services:
-  redis:
-    image: redis:7-alpine
-    restart: always
-    ports:
-      - "6379:6379"
-    healthcheck:
-      command: ["redis-cli", "ping"]
-      interval: 5
-      timeout: 30
-
-  web:
-    image: nginx:alpine
-    restart: always
-    ports:
-      - "8080:80"
-    healthcheck:
-      http: "/"
-      interval: 5
-      timeout: 30
-"""
+@click.argument('name', required=False, default=None)
+@click.option('--example', is_flag=True, help='Create full-stack example with DB, API, Redis, Prometheus')
+def init(name, example):
+    """Initialize a new contain configuration"""
+    if name:
+        config_dir = Path(name)
+        config_dir.mkdir(parents=True, exist_ok=True)
+        config_path = config_dir / "contain.yaml"
+    else:
+        config_path = Path("contain.yaml")
     
-    if os.path.exists("contain.yaml"):
-        click.echo("contain.yaml already exists!")
+    if config_path.exists():
+        click.echo(f" {config_path} already exists")
         return
     
-    with open("contain.yaml", "w") as f:
-        f.write(config)
+    if example:
+        project_name = Path(name).name if name else "full-stack"
+        config = {
+            "name": project_name,
+            "version": "2.0",
+            "services": {
+                "postgres": {
+                    "image": "postgres:15-alpine",
+                    "restart": "always",
+                    "ports": ["5432:5432"],
+                    "environment": {
+                        "POSTGRES_PASSWORD": "secret"
+                    },
+                    "healthcheck": {
+                        "command": ["pg_isready", "-U", "postgres"],
+                        "interval": 5,
+                        "timeout": 30
+                    }
+                },
+                "redis": {
+                    "image": "redis:7-alpine",
+                    "restart": "always",
+                    "ports": ["6379:6379"],
+                    "healthcheck": {
+                        "command": ["redis-cli", "ping"],
+                        "interval": 5,
+                        "timeout": 30
+                    }
+                },
+                "api": {
+                    "build": "./api",
+                    "restart": "always",
+                    "ports": ["5000:5000"],
+                    "depends_on": ["postgres", "redis"],
+                    "healthcheck": {
+                        "http": "/health",
+                        "interval": 5,
+                        "timeout": 30
+                    }
+                },
+                "web": {
+                    "image": "nginx:alpine",
+                    "restart": "always",
+                    "ports": ["8080:80"],
+                    "depends_on": ["api"],
+                    "healthcheck": {
+                        "http": "/",
+                        "interval": 5,
+                        "timeout": 30
+                    }
+                },
+                "prometheus": {
+                    "image": "prom/prometheus:latest",
+                    "restart": "always",
+                    "ports": ["9090:9090"],
+                    "healthcheck": {
+                        "http": "/-/healthy",
+                        "interval": 10,
+                        "timeout": 30
+                    }
+                },
+                "grafana": {
+                    "image": "grafana/grafana:latest",
+                    "restart": "always",
+                    "ports": ["3000:3000"],
+                    "healthcheck": {
+                        "http": "/api/health",
+                        "interval": 10,
+                        "timeout": 30
+                    }
+                }
+            }
+        }
+    else:
+        project_name = Path(name).name if name else "example"
+        config = {
+            "name": example,
+            "version": "1.0",
+            "services": {
+                "web": {
+                    "image": "nginx:alpine",
+                    "restart": "always",
+                    "ports": ["8080:80"],
+                    "healthcheck": {
+                        "http": "/",
+                        "interval": 5,
+                        "timeout": 30
+                    }
+                },
+                "redis": {
+                    "image": "redis:7-alpine",
+                    "restart": "always",
+                    "ports": ["6379:6379"],
+                    "healthcheck": {
+                        "command": ["redis-cli", "ping"],
+                        "interval": 5,
+                        "timeout": 30
+                    }
+                }
+            }
+        }
     
-    click.echo("Created contain.yaml")
+    with open(config_path, "w") as f:
+        yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+    
+    click.echo(f" Created {config_path}")
+    
+    if name:
+        click.echo(f"\n Project: {name}/")
+    
     click.echo("\n Next steps:")
-    click.echo("  1. Edit contain.yaml for your services")
-    click.echo("  2. Run: contain up")
+    if name:
+        click.echo(f"  cd {name}")
+    click.echo("  contain up")
+    
+    if example:
+        click.echo("\n Services included:")
+        click.echo("  • PostgreSQL (port 5432)")
+        click.echo("  • Redis (port 6379)")
+        click.echo("  • API (port 5000)")
+        click.echo("  • Nginx (port 8080)")
+        click.echo("  • Prometheus (port 9090)")
+        click.echo("  • Grafana (port 3000)")
+    else:
+        click.echo("\n Services included:")
+        click.echo("  • Nginx (port 8080)")
+        click.echo("  • Redis (port 6379)")
+
 @cli.command()
 @click.option("--file", "-f", default="contain.yaml", help="Config file")
 @click.option("--env", "-e", default="dev", help="Environment (dev/staging/prod)")
