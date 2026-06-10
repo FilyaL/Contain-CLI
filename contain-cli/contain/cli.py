@@ -15,45 +15,43 @@ def cli():
 
 @cli.command()
 @click.argument("name", default=".")
-def init(name):
-    """Initialize a new contain configuration"""
-    config_path = Path(name) / "contain.yaml"
-    if config_path.exists():
-        click.echo(f"{config_path} already exists")
+@cli.command()
+def init():
+    """Initialize new contain.yaml"""
+    config = """name: my-app
+services:
+  redis:
+    image: redis:7-alpine
+    restart: always
+    ports:
+      - "6379:6379"
+    healthcheck:
+      command: ["redis-cli", "ping"]
+      interval: 5
+      timeout: 30
+
+  web:
+    image: nginx:alpine
+    restart: always
+    ports:
+      - "8080:80"
+    healthcheck:
+      http: "/"
+      interval: 5
+      timeout: 30
+"""
+    
+    if os.path.exists("contain.yaml"):
+        click.echo("contain.yaml already exists!")
         return
     
-    config_path.parent.mkdir(parents=True, exist_ok=True)
+    with open("contain.yaml", "w") as f:
+        f.write(config)
     
-    example_config = {
-        "name": Path(name).name or "my-app",
-        "version": "1.0",
-        "services": {
-            "web": {
-                "image": "nginx:alpine",
-                "ports": ["8081:80"],
-                "healthcheck": {
-                    "http": "/",
-                    "interval": 10,
-                    "timeout": 3
-                }
-            },
-            "redis": {
-                "image": "redis:alpine",
-                "healthcheck": {
-                    "command": ["redis-cli", "ping"]
-                }
-            }
-        }
-    }
-    
-    with open(config_path, "w") as f:
-        yaml.dump(example_config, f)
-    
-    click.echo(f"Created {config_path}")
+    click.echo("Created contain.yaml")
     click.echo("\n Next steps:")
-    click.echo(f"  cd {name}")
-    click.echo("  contain up")
-
+    click.echo("  1. Edit contain.yaml for your services")
+    click.echo("  2. Run: contain up")
 @cli.command()
 @click.option("--file", "-f", default="contain.yaml", help="Config file")
 @click.option("--env", "-e", default="dev", help="Environment (dev/staging/prod)")
@@ -238,3 +236,83 @@ def dashboard(port):
     from .dashboard import run_dashboard
     click.echo(f"Dashboard available at http://localhost:{port}")
     run_dashboard(port)
+
+@cli.command()
+@click.option('--example', is_flag=True, help='Create example config with many services')
+def init(example):
+    """Initialize new contain.yaml"""
+    if os.path.exists("contain.yaml"):
+        click.echo("contain.yaml already exists!")
+        return
+    
+    if example:
+        config = """name: full-stack
+services:
+  postgres:
+    image: postgres:15-alpine
+    restart: always
+    ports: ["5432:5432"]
+    environment:
+      POSTGRES_PASSWORD: "secret"
+    healthcheck:
+      command: ["pg_isready", "-U", "postgres"]
+      interval: 5
+      timeout: 30
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    ports: ["6379:6379"]
+    healthcheck:
+      command: ["redis-cli", "ping"]
+      interval: 5
+      timeout: 30
+
+  api:
+    build: ./api
+    restart: always
+    ports: ["5000:5000"]
+    depends_on: ["postgres", "redis"]
+    healthcheck:
+      http: "/health"
+      interval: 5
+      timeout: 30
+
+  web:
+    image: nginx:alpine
+    restart: always
+    ports: ["8080:80"]
+    depends_on: ["api"]
+    healthcheck:
+      http: "/"
+      interval: 5
+      timeout: 30
+
+  prometheus:
+    image: prom/prometheus:latest
+    restart: always
+    ports: ["9090:9090"]
+    healthcheck:
+      http: "/-/healthy"
+      interval: 10
+      timeout: 30
+"""
+    else:
+        config = """name: my-app
+services:
+  web:
+    image: nginx:alpine
+    restart: always
+    ports: ["8080:80"]
+    healthcheck:
+      http: "/"
+      interval: 5
+      timeout: 30
+"""
+    
+    with open("contain.yaml", "w") as f:
+        f.write(config)
+    
+    click.echo(" Created contain.yaml")
+    click.echo("\n Next steps:")
+    click.echo("  1. Run: contain up")
